@@ -85,13 +85,22 @@ class DocFetcherIndex:
     def is_started(self):
         return self._started
 
-    def build_index(self, project_dir, index_dir):
+    def build_index(self, project_dir, index_dir, force=False):
+        """构建索引。如果 index_dir 已存在且 force=False，则直接加载已有索引"""
         if not self._started:
             self.start()
         import jpype.imports
         from net.sourceforge.docfetcher.model.index.file import FileIndex
         from java.io import File as JavaFile
         os.makedirs(index_dir, exist_ok=True)
+        # 如果索引目录已存在且有文件，且不是强制重建，则直接加载
+        if os.path.exists(index_dir) and not force:
+            existing_files = [f for f in os.listdir(index_dir)
+                             if os.path.isfile(os.path.join(index_dir, f))]
+            if existing_files:
+                logger.info(f"Index already exists at {index_dir}, loading...")
+                return self.load_index(index_dir, project_dir)
+        # 清空旧索引文件（只删除文件，保留子目录）
         if os.path.exists(index_dir):
             for f in os.listdir(index_dir):
                 fp = os.path.join(index_dir, f)
@@ -107,6 +116,15 @@ class DocFetcherIndex:
         stats = self._get_stats()
         logger.info(f"Index built: {stats}")
         return stats
+
+    def load_index(self, index_dir, project_dir=None):
+        """加载已有索引目录（仅恢复路径信息，搜索使用文件扫描）"""
+        if not os.path.exists(index_dir):
+            raise FileNotFoundError(f"Index directory not found: {index_dir}")
+        self._index_dir = index_dir
+        self._root_dir = project_dir
+        logger.info(f"Index directory restored: {index_dir}")
+        return {"num_docs": -1, "num_folders": -1, "errors": [], "note": "使用文件扫描搜索"}
 
     def _get_stats(self):
         if not self._index:
@@ -164,9 +182,10 @@ class DocFetcherIndex:
         if not self._started:
             self.start()
         results = []
-        # 直接扫描项目目录中的文件进行全文搜索
-        if project_dir:
-            all_files = self._get_all_files(project_dir)
+        # 使用文件扫描进行搜索（可靠且快速）
+        search_dir = project_dir or self._root_dir
+        if search_dir:
+            all_files = self._get_all_files(search_dir)
             for fpath in all_files:
                 try:
                     for encoding in ["utf-8", "gbk", "latin-1"]:
@@ -174,7 +193,7 @@ class DocFetcherIndex:
                             with open(fpath, "r", encoding=encoding, errors="ignore") as f:
                                 content = f.read(5000)
                             if query.lower() in content.lower():
-                                rel_path = os.path.relpath(fpath, project_dir)
+                                rel_path = os.path.relpath(fpath, search_dir)
                                 results.append({
                                     "filename": rel_path,
                                     "content_preview": content[:2000],

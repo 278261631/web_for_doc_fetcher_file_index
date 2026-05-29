@@ -51,6 +51,13 @@ os.makedirs(INDEX_BASE_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
 
+def get_index_dir_for_project(project_dir):
+    """根据项目目录生成固定的索引目录路径（基于 hash）"""
+    import hashlib
+    project_hash = hashlib.sha256(project_dir.encode('utf-8')).hexdigest()[:12]
+    return os.path.join(INDEX_BASE_DIR, project_hash)
+
+
 def load_config():
     """从配置文件加载持久化设置"""
     global current_project
@@ -86,8 +93,27 @@ def save_config():
         logger.warning(f"保存配置文件失败: {e}")
 
 
+def auto_load_index():
+    """启动时自动加载已有索引"""
+    saved_dir = current_project.get('project_dir')
+    saved_index = current_project.get('index_dir')
+    if saved_index and os.path.isdir(saved_index) and saved_dir:
+        try:
+            logger.info(f"自动加载已有索引: {saved_index}")
+            stats = index_manager.load_index(saved_index, saved_dir)
+            logger.info(f"索引加载成功: {stats}")
+            return True
+        except Exception as e:
+            logger.warning(f"自动加载索引失败: {e}，需要重新构建")
+            # 清理无效配置
+            current_project['index_dir'] = None
+    return False
+
+
 # 启动时加载配置
 load_config()
+# 启动时自动加载已有索引
+auto_load_index()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -104,9 +130,8 @@ async def build_index(req: IndexRequest):
         if not os.path.exists(project_dir):
             raise HTTPException(status_code=400, detail=f"目录不存在: {project_dir}")
         
-        # 生成唯一索引目录
-        index_id = uuid.uuid4().hex[:8]
-        index_dir = os.path.join(INDEX_BASE_DIR, index_id)
+        # 使用基于 project_dir 的固定 hash 作为索引目录
+        index_dir = get_index_dir_for_project(project_dir)
         
         logger.info(f"Building index for: {project_dir}")
         stats = index_manager.build_index(project_dir, index_dir)
@@ -214,7 +239,8 @@ async def get_status():
     return {
         "started": index_manager.is_started,
         "project_dir": current_project["project_dir"],
-        "index_dir": current_project["index_dir"]
+        "index_dir": current_project["index_dir"],
+        "index_loaded": index_manager._index is not None
     }
 
 
