@@ -213,6 +213,21 @@ function renderTree(node, depth) {
             html += renderTree(child, depth + 1);
         });
         
+        // Also render files from the files array
+        const files = node.files || [];
+        files.forEach(file => {
+            const name = file.name || file.path?.split('/').pop() || file.path?.split('\\').pop() || 'unknown';
+            const fpath = file.path || '';
+            const typeClass = getFileTypeClass(name);
+            html += `
+                <div class="tree-item file ${typeClass}" style="padding-left: ${(depth + 1) * 16 + 8}px" onclick="openFile('${escapeAttr(fpath)}')">
+                    <span class="tree-toggle"></span>
+                    <span class="tree-icon">${getFileIcon(name)}</span>
+                    <span class="tree-label">${escapeHtml(name)}</span>
+                </div>
+            `;
+        });
+        
         html += '</div>';
     } else {
         const typeClass = getFileTypeClass(name);
