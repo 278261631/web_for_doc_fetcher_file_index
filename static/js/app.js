@@ -1,324 +1,566 @@
-// 全局状态
-let currentProjectDir = null;
+// ============================================
+// DocFetcher Web - IntelliJ IDEA Style
+// ============================================
 
-// 文件图标映射
+// Global state
+let currentProjectDir = null;
+let currentOpenFiles = [];
+let activeFileTab = null;
+let sidebarVisible = true;
+
+// File icon mapping (IDEA style)
 const fileIcons = {
-    '.c': '📄', '.h': '📋', '.cpp': '📄', '.hpp': '📋',
-    '.py': '🐍', '.java': '☕', '.js': '📜', '.ts': '📜',
-    '.html': '🌐', '.css': '🎨', '.json': '📊', '.xml': '📰',
-    '.bat': '⚙️', '.sh': '⚙️', '.md': '📝', '.txt': '📄',
-    '.ini': '⚙️', '.cfg': '⚙️', '.conf': '⚙️', '.yml': '⚙️',
-    '.yaml': '⚙️', '.toml': '⚙️', '.make': '🔨', '.mk': '🔨',
-    '.s': '📜', '.S': '📜', '.asm': '📜', '.ld': '📋',
+    '.java': '☕', '.class': '☕',
+    '.py': '🐍', '.pyc': '🐍',
+    '.js': '📜', '.jsx': '⚛️',
+    '.ts': '📜', '.tsx': '⚛️',
+    '.html': '🌐', '.htm': '🌐',
+    '.css': '🎨', '.scss': '🎨', '.less': '🎨',
+    '.json': '📊', '.xml': '📰',
+    '.md': '📝', '.txt': '📄',
+    '.yml': '⚙️', '.yaml': '⚙️', '.toml': '⚙️',
+    '.ini': '⚙️', '.cfg': '⚙️', '.conf': '⚙️',
+    '.c': '📄', '.h': '📋',
+    '.cpp': '📄', '.hpp': '📋',
+    '.go': '🔷', '.rs': '🦀',
+    '.rb': '💎', '.php': '🐘',
+    '.sql': '🗃️', '.sh': '⚙️', '.bat': '⚙️',
+    '.gitignore': '⚙️', '.gitconfig': '⚙️',
+    '.dockerfile': '🐳', '.env': '⚙️',
+    '.svg': '🖼️', '.png': '🖼️', '.jpg': '🖼️',
 };
 
 function getFileIcon(filename) {
+    if (!filename) return '📄';
     const ext = '.' + filename.split('.').pop().toLowerCase();
     return fileIcons[ext] || '📄';
 }
 
-// 显示索引对话框
+function getFileTypeClass(filename) {
+    if (!filename) return '';
+    const ext = '.' + filename.split('.').pop().toLowerCase();
+    const typeMap = {
+        '.java': 'file-java', '.py': 'file-python',
+        '.js': 'file-js', '.jsx': 'file-js',
+        '.ts': 'file-ts', '.tsx': 'file-ts',
+        '.html': 'file-html', '.htm': 'file-html',
+        '.css': 'file-css', '.scss': 'file-css',
+        '.json': 'file-json', '.xml': 'file-xml',
+        '.md': 'file-md', '.yml': 'file-yaml', '.yaml': 'file-yaml',
+        '.c': 'file-c', '.cpp': 'file-cpp',
+        '.bat': 'file-bat', '.sh': 'file-sh',
+    };
+    return typeMap[ext] || '';
+}
+
+function getRelativePath(fullPath, projectDir) {
+    if (!projectDir || !fullPath) return fullPath;
+    const normalized = fullPath.replace(/\\/g, '/');
+    const projNormalized = projectDir.replace(/\\/g, '/');
+    if (normalized.startsWith(projNormalized)) {
+        return normalized.substring(projNormalized.length).replace(/^\//, '');
+    }
+    return fullPath.split('/').pop() || fullPath.split('\\').pop();
+}
+
+// ============================================
+// Search
+// ============================================
+
+async function executeSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) return;
+    
+    const resultsList = document.getElementById('resultsList');
+    const resultsCount = document.getElementById('resultsCount');
+    const statusBarResults = document.getElementById('statusBarResults');
+    
+    resultsList.innerHTML = '<div class="results-empty"><div class="progress-spinner"></div><p>Searching...</p></div>';
+    resultsCount.textContent = 'Searching...';
+    
+    const startTime = Date.now();
+    
+    try {
+        const response = await fetch(`/api/search?query=${encodeURIComponent(query)}&max_results=100`);
+        const data = await response.json();
+        
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        
+        if (data.success && data.results) {
+            renderResults(data.results, query);
+            resultsCount.textContent = `${data.count} result${data.count !== 1 ? 's' : ''} in ${elapsed}s`;
+            statusBarResults.textContent = `${data.count} results`;
+            document.getElementById('statusBarTime').textContent = `${elapsed}s`;
+        } else {
+            resultsList.innerHTML = '<div class="results-empty"><p>No results found</p></div>';
+            resultsCount.textContent = '0 results';
+            statusBarResults.textContent = '0 results';
+        }
+    } catch (error) {
+        resultsList.innerHTML = `<div class="results-empty"><p style="color: var(--accent-red)">Search error: ${error.message}</p></div>`;
+        resultsCount.textContent = 'Error';
+        console.error('Search error:', error);
+    }
+}
+
+function renderResults(results, query) {
+    const resultsList = document.getElementById('resultsList');
+    
+    if (!results || results.length === 0) {
+        resultsList.innerHTML = '<div class="results-empty"><p>No results found</p></div>';
+        return;
+    }
+    
+    let html = '';
+    results.forEach(result => {
+        const relPath = getRelativePath(result.file || result.path, currentProjectDir);
+        const icon = getFileIcon(relPath);
+        const typeClass = getFileTypeClass(relPath);
+        const lineNum = result.line || 1;
+        const lineContent = escapeHtml(result.content || result.line_content || '');
+        
+        // Highlight search match
+        let highlightedContent = lineContent;
+        if (query && lineContent.toLowerCase().includes(query.toLowerCase())) {
+            const regex = new RegExp(escapeRegex(query), 'gi');
+            highlightedContent = lineContent.replace(regex, match => `<span class="match">${escapeHtml(match)}</span>`);
+        }
+        
+        html += `
+            <div class="result-item" onclick="openFile('${escapeAttr(result.file || result.path)}', ${lineNum})">
+                <div class="result-path">
+                    <span class="file-icon">${icon}</span>
+                    <span class="path-text ${typeClass}">${escapeHtml(relPath)}</span>
+                </div>
+                <div class="result-line">
+                    <span class="result-line-number">${lineNum}</span>
+                    <span class="result-line-content">${highlightedContent}</span>
+                </div>
+            </div>
+        `;
+    });
+    
+    resultsList.innerHTML = html;
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('resultsList').innerHTML = `
+        <div class="results-empty">
+            <svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/></svg>
+            <p>Enter search text and press Enter</p>
+        </div>
+    `;
+    document.getElementById('resultsCount').textContent = 'No results';
+    document.getElementById('statusBarResults').textContent = '';
+    document.getElementById('statusBarTime').textContent = '';
+}
+
+// ============================================
+// File Tree
+// ============================================
+
+async function loadTree() {
+    const treeContainer = document.getElementById('projectTree');
+    treeContainer.innerHTML = '<div class="tree-empty"><div class="progress-spinner"></div></div>';
+    
+    try {
+        const response = await fetch('/api/tree');
+        const data = await response.json();
+        
+        if (data.success && data.tree) {
+            treeContainer.innerHTML = renderTree(data.tree, 0);
+        } else {
+            treeContainer.innerHTML = '<div class="tree-empty">No files found</div>';
+        }
+    } catch (error) {
+        treeContainer.innerHTML = `<div class="tree-empty" style="color: var(--accent-red)">Error loading tree</div>`;
+        console.error('Tree error:', error);
+    }
+}
+
+function renderTree(node, depth) {
+    if (!node) return '';
+    
+    const isDir = node.type === 'dir' || node.children;
+    const name = node.name || node.path?.split('/').pop() || node.path?.split('\\').pop() || 'unknown';
+    const path = node.path || '';
+    const indent = depth * 16;
+    
+    let html = '';
+    
+    if (isDir) {
+        const dirId = `dir-${Math.random().toString(36).substr(2, 9)}`;
+        html += `
+            <div class="tree-item dir" style="padding-left: ${indent + 8}px" onclick="toggleDir('${dirId}')">
+                <span class="tree-toggle" id="toggle-${dirId}">▶</span>
+                <span class="tree-icon">📁</span>
+                <span class="tree-label">${escapeHtml(name)}</span>
+            </div>
+            <div class="tree-children" id="${dirId}">
+        `;
+        
+        const children = node.children || [];
+        // Sort: dirs first, then files
+        const sorted = [...children].sort((a, b) => {
+            const aDir = a.type === 'dir' || a.children ? 0 : 1;
+            const bDir = b.type === 'dir' || b.children ? 0 : 1;
+            if (aDir !== bDir) return aDir - bDir;
+            return (a.name || '').localeCompare(b.name || '');
+        });
+        
+        sorted.forEach(child => {
+            html += renderTree(child, depth + 1);
+        });
+        
+        html += '</div>';
+    } else {
+        const typeClass = getFileTypeClass(name);
+        html += `
+            <div class="tree-item file ${typeClass}" style="padding-left: ${indent + 8}px" onclick="openFile('${escapeAttr(path)}')">
+                <span class="tree-toggle"></span>
+                <span class="tree-icon">${getFileIcon(name)}</span>
+                <span class="tree-label">${escapeHtml(name)}</span>
+            </div>
+        `;
+    }
+    
+    return html;
+}
+
+function toggleDir(dirId) {
+    const children = document.getElementById(dirId);
+    const toggle = document.getElementById(`toggle-${dirId}`);
+    
+    if (children) {
+        const isExpanded = children.classList.contains('expanded');
+        children.classList.toggle('expanded');
+        if (toggle) {
+            toggle.textContent = isExpanded ? '▶' : '▼';
+        }
+    }
+}
+
+function collapseAll() {
+    document.querySelectorAll('.tree-children').forEach(el => el.classList.remove('expanded'));
+    document.querySelectorAll('.tree-toggle').forEach(el => el.textContent = '▶');
+}
+
+function expandAll() {
+    document.querySelectorAll('.tree-children').forEach(el => el.classList.add('expanded'));
+    document.querySelectorAll('.tree-toggle').forEach(el => el.textContent = '▼');
+}
+
+// ============================================
+// File Viewer
+// ============================================
+
+async function openFile(filePath, lineNumber = null) {
+    // Check if already open
+    const existingTab = currentOpenFiles.find(f => f.path === filePath);
+    if (existingTab) {
+        activateTab(existingTab.id);
+        if (lineNumber) {
+            scrollToLine(lineNumber);
+        }
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const tabId = `tab-${Date.now()}`;
+            const fileName = filePath.split('/').pop() || filePath.split('\\').pop();
+            
+            currentOpenFiles.push({
+                id: tabId,
+                path: filePath,
+                name: fileName,
+                content: data.content || '',
+                lines: data.lines || (data.content || '').split('\n'),
+                total_lines: data.total_lines || 0,
+            });
+            
+            renderTabs();
+            activateTab(tabId);
+            
+            if (lineNumber) {
+                setTimeout(() => scrollToLine(lineNumber), 50);
+            }
+        }
+    } catch (error) {
+        console.error('File open error:', error);
+    }
+}
+
+function renderTabs() {
+    const tabsContainer = document.getElementById('fileTabs');
+    
+    if (currentOpenFiles.length === 0) {
+        tabsContainer.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    currentOpenFiles.forEach(file => {
+        const isActive = file.id === activeFileTab;
+        html += `
+            <div class="file-tab ${isActive ? 'active' : ''}" onclick="activateTab('${file.id}')">
+                <span class="tab-icon">${getFileIcon(file.name)}</span>
+                <span class="tab-name">${escapeHtml(file.name)}</span>
+                <span class="tab-close" onclick="event.stopPropagation(); closeTab('${file.id}')">✕</span>
+            </div>
+        `;
+    });
+    
+    tabsContainer.innerHTML = html;
+}
+
+function activateTab(tabId) {
+    activeFileTab = tabId;
+    const file = currentOpenFiles.find(f => f.id === tabId);
+    
+    if (!file) return;
+    
+    renderTabs();
+    renderFileContent(file);
+}
+
+function closeTab(tabId) {
+    const index = currentOpenFiles.findIndex(f => f.id === tabId);
+    if (index === -1) return;
+    
+    currentOpenFiles.splice(index, 1);
+    
+    if (activeFileTab === tabId) {
+        activeFileTab = currentOpenFiles.length > 0 ? currentOpenFiles[Math.max(0, index - 1)].id : null;
+        if (activeFileTab) {
+            activateTab(activeFileTab);
+        } else {
+            document.getElementById('contentArea').innerHTML = '<div class="content-empty"><p>Select a file to view its contents</p></div>';
+        }
+    }
+    
+    renderTabs();
+}
+
+function renderFileContent(file) {
+    const contentArea = document.getElementById('contentArea');
+    const lines = file.lines || file.content.split('\n');
+    
+    let html = '<div class="code-container">';
+    lines.forEach((line, index) => {
+        const lineNum = index + 1;
+        html += `
+            <div class="code-line" id="line-${lineNum}">
+                <span class="code-line-number">${lineNum}</span>
+                <span class="code-line-content">${escapeHtml(line)}</span>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    contentArea.innerHTML = html;
+}
+
+function scrollToLine(lineNumber) {
+    const lineEl = document.getElementById(`line-${lineNumber}`);
+    if (lineEl) {
+        lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        lineEl.classList.add('highlight');
+        setTimeout(() => lineEl.classList.remove('highlight'), 2000);
+    }
+}
+
+// ============================================
+// Index Dialog
+// ============================================
+
 function showIndexDialog() {
-    document.getElementById('indexModal').classList.add('active');
-    document.getElementById('indexResult').style.display = 'none';
-    document.getElementById('indexProgress').style.display = 'none';
+    document.getElementById('indexDialog').classList.add('active');
+    if (currentProjectDir) {
+        document.getElementById('projectDir').value = currentProjectDir;
+    }
 }
 
 function closeIndexDialog() {
-    document.getElementById('indexModal').classList.remove('active');
+    document.getElementById('indexDialog').classList.remove('active');
 }
 
-// 构建索引
 async function buildIndex() {
     const projectDir = document.getElementById('projectDir').value.trim();
     if (!projectDir) {
-        alert('请输入项目目录路径');
+        alert('Please enter a project directory');
         return;
     }
-
-    const progressEl = document.getElementById('indexProgress');
-    const resultEl = document.getElementById('indexResult');
-    const btn = document.querySelector('.btn-primary');
-
-    progressEl.style.display = 'block';
-    resultEl.style.display = 'none';
-    btn.disabled = true;
-
+    
+    closeIndexDialog();
+    showProgress('Indexing project...');
+    
     try {
         const response = await fetch('/api/index', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ project_dir: projectDir })
         });
-
+        
         const data = await response.json();
-        progressEl.style.display = 'none';
-
+        
         if (data.success) {
-            resultEl.className = 'result-container success';
-            resultEl.innerHTML = '<strong>✅ 索引构建成功！</strong><br>文档数: ' + data.stats.num_docs + ' | 文件夹数: ' + data.stats.num_folders + '<br>项目: ' + data.project_dir;
-            resultEl.style.display = 'block';
-
             currentProjectDir = data.project_dir;
-            document.getElementById('statusIndicator').classList.add('active');
-
-            setTimeout(function() {
-                closeIndexDialog();
-                loadTree();
-            }, 1000);
-        } else {
-            throw new Error(data.detail || '索引构建失败');
-        }
-    } catch (error) {
-        progressEl.style.display = 'none';
-        resultEl.className = 'result-container error';
-        resultEl.innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
-        resultEl.style.display = 'block';
-    } finally {
-        btn.disabled = false;
-    }
-}
-
-// 搜索
-async function search() {
-    const query = document.getElementById('searchInput').value.trim();
-    if (!query) return;
-
-    const contentArea = document.getElementById('contentArea');
-    contentArea.innerHTML = '<div class="loading">搜索中</div>';
-
-    try {
-        const response = await fetch('/api/search?query=' + encodeURIComponent(query) + '&max_results=50');
-        const data = await response.json();
-
-        if (data.success) {
-            renderSearchResults(data);
-        } else {
-            contentArea.innerHTML = '<div class="empty-state"><p>搜索失败: ' + data.detail + '</p></div>';
-        }
-    } catch (error) {
-        contentArea.innerHTML = '<div class="empty-state"><p>搜索出错: ' + error.message + '</p></div>';
-    }
-}
-
-// 渲染搜索结果
-function renderSearchResults(data) {
-    const contentArea = document.getElementById('contentArea');
-    
-    var html = '<div class="search-results">' +
-        '<div class="search-header">' +
-        '<h3>🔍 搜索结果: "' + data.query + '"</h3>' +
-        '<span class="count">' + data.count + ' 个结果</span>' +
-        '</div>';
-
-    if (data.count === 0) {
-        html += '<div class="empty-state"><p>未找到匹配的结果</p></div>';
-    } else {
-        data.results.forEach(function(result) {
-            var preview = result.content_preview ? 
-                result.content_preview.substring(0, 200).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 
-                '无预览内容';
-            var size = result.file_size ? formatSize(result.file_size) : '';
-            var safeFilename = result.filename.replace(/\\/g, '/').replace(/'/g, "\\'");
             
-            html += '<div class="result-item" onclick="openFile(\'' + safeFilename + '\')">' +
-                '<div class="result-filename">' + getFileIcon(result.filename) + ' ' + result.filename + '</div>' +
-                '<div class="result-preview">' + preview + '</div>' +
-                (size ? '<div class="result-meta">' + size + '</div>' : '') +
-                '</div>';
-        });
-    }
-
-    html += '</div>';
-    contentArea.innerHTML = html;
-}
-
-// 加载文件树
-async function loadTree() {
-    const treeContainer = document.getElementById('treeContainer');
-    treeContainer.innerHTML = '<div class="loading">加载文件树</div>';
-
-    try {
-        var pathParam = currentProjectDir ? '?path=' + encodeURIComponent(currentProjectDir) : '';
-        const response = await fetch('/api/tree' + pathParam);
-        const data = await response.json();
-
-        if (data.success) {
-            renderTree(data.tree, treeContainer);
+            // 保存到 localStorage
+            try {
+                localStorage.setItem('docfetcher_project_dir', projectDir);
+            } catch (e) {
+                console.warn('Failed to save to localStorage:', e);
+            }
+            
+            // Update UI
+            document.getElementById('statusIndicator').classList.add('active');
+            document.getElementById('statusText').textContent = 'Indexed';
+            document.getElementById('statusBarProject').textContent = currentProjectDir;
+            
+            // Load tree
+            loadTree();
+            
+            hideProgress();
         } else {
-            treeContainer.innerHTML = '<div class="empty-state"><p>加载失败: ' + data.detail + '</p></div>';
+            hideProgress();
+            alert(`Index build failed: ${data.detail || data.message || 'Unknown error'}`);
         }
     } catch (error) {
-        treeContainer.innerHTML = '<div class="empty-state"><p>加载出错: ' + error.message + '</p></div>';
+        hideProgress();
+        alert(`Index build error: ${error.message}`);
+        console.error('Index error:', error);
     }
 }
 
-// 渲染文件树
-function renderTree(node, container, depth) {
-    if (!node) return;
-    if (depth === undefined) depth = 0;
-    
-    if (depth === 0) container.innerHTML = '';
-
-    // 渲染顶层文件
-    if (depth === 0 && node.files && node.files.length > 0) {
-        var rootFilesDiv = document.createElement('div');
-        rootFilesDiv.className = 'tree-files';
-        rootFilesDiv.style.paddingLeft = '8px';
-        node.files.forEach(function(file) {
-            var fileDiv = document.createElement('div');
-            fileDiv.className = 'tree-file';
-            fileDiv.innerHTML = '<span class="icon">' + getFileIcon(file.name) + '</span>' + file.name;
-            fileDiv.onclick = function() { openFile(file.path); };
-            rootFilesDiv.appendChild(fileDiv);
-        });
-        container.appendChild(rootFilesDiv);
+function browseDirectory() {
+    // Simple prompt for directory path (cross-platform compatible)
+    const path = prompt('Enter project directory path:', currentProjectDir || '');
+    if (path) {
+        document.getElementById('projectDir').value = path;
     }
+}
 
-    if (node.children) {
-        node.children.forEach(function(child) {
-            var folderDiv = document.createElement('div');
-            folderDiv.className = 'tree-item';
-            var paddingLeft = 8 + depth * 16;
-            folderDiv.innerHTML = '<div class="tree-folder" style="padding-left: ' + paddingLeft + 'px" onclick="toggleFolder(this)">' +
-                '<span class="toggle">▶</span>' +
-                '<span class="name">📁 ' + child.name + '</span>' +
-                '</div>' +
-                '<div class="tree-children" style="display:none;"></div>';
-            container.appendChild(folderDiv);
+// ============================================
+// Progress
+// ============================================
 
-            // 渲染文件
-            if (child.files && child.files.length > 0) {
-                var filesDiv = document.createElement('div');
-                filesDiv.className = 'tree-files';
-                child.files.forEach(function(file) {
-                    var fileDiv = document.createElement('div');
-                    fileDiv.className = 'tree-file';
-                    fileDiv.innerHTML = '<span class="icon">' + getFileIcon(file.name) + '</span>' + file.name;
-                    fileDiv.onclick = function() { openFile(file.path); };
-                    filesDiv.appendChild(fileDiv);
-                });
-                folderDiv.querySelector('.tree-children').appendChild(filesDiv);
+function showProgress(text) {
+    document.getElementById('progressText').textContent = text || 'Processing...';
+    document.getElementById('progressOverlay').classList.add('active');
+}
+
+function hideProgress() {
+    document.getElementById('progressOverlay').classList.remove('active');
+}
+
+// ============================================
+// Sidebar Toggle
+// ============================================
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    sidebarVisible = !sidebarVisible;
+    sidebar.classList.toggle('collapsed', !sidebarVisible);
+}
+
+// ============================================
+// Utility Functions
+// ============================================
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeAttr(text) {
+    if (!text) return '';
+    return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ============================================
+// Keyboard Shortcuts
+// ============================================
+
+document.addEventListener('keydown', function(e) {
+    // Ctrl+Shift+F: Focus search
+    if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
+    }
+    // Enter: Execute search when search input is focused
+    if (e.key === 'Enter' && document.activeElement === document.getElementById('searchInput')) {
+        e.preventDefault();
+        executeSearch();
+    }
+    // Escape: Close dialogs
+    if (e.key === 'Escape') {
+        closeIndexDialog();
+        hideProgress();
+    }
+    // Ctrl+E: Toggle sidebar
+    if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault();
+        toggleSidebar();
+    }
+});
+
+// Search input Enter key
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                executeSearch();
             }
-
-            // 递归渲染子文件夹
-            if (child.children && child.children.length > 0) {
-                var subContainer = folderDiv.querySelector('.tree-children');
-                child.children.forEach(function(subChild) {
-                    renderSubTree(subChild, subContainer, depth + 1);
-                });
-            }
         });
     }
-}
+});
 
-function renderSubTree(node, container, depth) {
-    var folderDiv = document.createElement('div');
-    folderDiv.className = 'tree-item';
-    var paddingLeft = 8 + depth * 16;
-    folderDiv.innerHTML = '<div class="tree-folder" style="padding-left: ' + paddingLeft + 'px" onclick="toggleFolder(this)">' +
-        '<span class="toggle">▶</span>' +
-        '<span class="name">📁 ' + node.name + '</span>' +
-        '</div>' +
-        '<div class="tree-children" style="display:none;"></div>';
-    container.appendChild(folderDiv);
+// ============================================
+// Initialization
+// ============================================
 
-    if (node.files && node.files.length > 0) {
-        var filesDiv = document.createElement('div');
-        filesDiv.className = 'tree-files';
-        node.files.forEach(function(file) {
-            var fileDiv = document.createElement('div');
-            fileDiv.className = 'tree-file';
-            fileDiv.innerHTML = '<span class="icon">' + getFileIcon(file.name) + '</span>' + file.name;
-            fileDiv.onclick = function() { openFile(file.path); };
-            filesDiv.appendChild(fileDiv);
-        });
-        folderDiv.querySelector('.tree-children').appendChild(filesDiv);
-    }
-
-    if (node.children && node.children.length > 0) {
-        var subContainer = folderDiv.querySelector('.tree-children');
-        node.children.forEach(function(subChild) {
-            renderSubTree(subChild, subContainer, depth + 1);
-        });
-    }
-}
-
-// 切换文件夹展开/折叠
-function toggleFolder(element) {
-    var children = element.nextElementSibling;
-    if (children) {
-        var isHidden = children.style.display === 'none';
-        children.style.display = isHidden ? 'block' : 'none';
-        element.querySelector('.toggle').textContent = isHidden ? '▼' : '▶';
-    }
-}
-
-// 打开文件
-async function openFile(filePath) {
-    const contentArea = document.getElementById('contentArea');
-    contentArea.innerHTML = '<div class="loading">加载文件</div>';
-
-    try {
-        const response = await fetch('/api/file?path=' + encodeURIComponent(filePath));
-        const data = await response.json();
-
-        if (data.success) {
-            renderFileContent(data);
-        } else {
-            contentArea.innerHTML = '<div class="empty-state"><p>无法打开文件: ' + data.detail + '</p></div>';
-        }
-    } catch (error) {
-        contentArea.innerHTML = '<div class="empty-state"><p>打开文件出错: ' + error.message + '</p></div>';
-    }
-}
-
-// 渲染文件内容
-function renderFileContent(data) {
-    const contentArea = document.getElementById('contentArea');
-    var lines = data.content.split('\n');
-    
-    var html = '<div class="search-results">' +
-        '<div class="search-header">' +
-        '<h3>📄 ' + data.path.split('/').pop().split('\\').pop() + '</h3>' +
-        '<span class="count">' + data.lines + ' 行</span>' +
-        '</div>' +
-        '<div class="line-numbers">' +
-        '<div class="line-nums">';
-    
-    lines.forEach(function(_, i) {
-        html += (i + 1) + '\n';
-    });
-    
-    html += '</div><div class="line-content"><pre><code>';
-    
-    lines.forEach(function(line) {
-        html += line.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '\n';
-    });
-    
-    html += '</code></pre></div></div></div>';
-    contentArea.innerHTML = html;
-}
-
-// 格式化文件大小
-function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-// 页面加载完成后检查状态
-window.addEventListener('DOMContentLoaded', async function() {
+async function init() {
     try {
         const response = await fetch('/api/status');
         const data = await response.json();
-        if (data.project_dir) {
+        
+        if (data.started && data.project_dir) {
             currentProjectDir = data.project_dir;
             document.getElementById('statusIndicator').classList.add('active');
+            document.getElementById('statusText').textContent = 'Indexed';
+            document.getElementById('statusBarProject').textContent = data.project_dir;
             document.getElementById('projectDir').value = data.project_dir;
             loadTree();
+        } else {
+            // 后端没有目录，尝试从 localStorage 读取
+            try {
+                const savedDir = localStorage.getItem('docfetcher_project_dir');
+                if (savedDir) {
+                    document.getElementById('projectDir').value = savedDir;
+                    currentProjectDir = savedDir;
+                }
+            } catch (e) {
+                console.warn('Failed to read from localStorage:', e);
+            }
         }
     } catch (error) {
         console.log('Status check failed:', error);
     }
-});
+}
+
+// Start
+init();

@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import uuid
 import logging
 from pathlib import Path
@@ -46,6 +47,48 @@ current_project = {
 INDEX_BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "indexes")
 os.makedirs(INDEX_BASE_DIR, exist_ok=True)
 
+# 配置文件路径
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+
+def load_config():
+    """从配置文件加载持久化设置"""
+    global current_project
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            saved_dir = config.get('project_dir')
+            saved_index = config.get('index_dir')
+            if saved_dir and os.path.isdir(saved_dir):
+                current_project['project_dir'] = saved_dir
+                logger.info(f"从配置文件加载目录: {saved_dir}")
+            else:
+                logger.info("配置文件中的目录不存在，已忽略")
+            if saved_index and os.path.isdir(saved_index):
+                current_project['index_dir'] = saved_index
+                logger.info(f"从配置文件加载索引目录: {saved_index}")
+        except Exception as e:
+            logger.warning(f"读取配置文件失败: {e}")
+
+
+def save_config():
+    """将当前设置保存到配置文件"""
+    try:
+        config = {
+            "project_dir": current_project.get('project_dir'),
+            "index_dir": current_project.get('index_dir')
+        }
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        logger.info(f"配置已保存: {current_project.get('project_dir')}")
+    except Exception as e:
+        logger.warning(f"保存配置文件失败: {e}")
+
+
+# 启动时加载配置
+load_config()
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index_page(request: Request):
@@ -70,6 +113,9 @@ async def build_index(req: IndexRequest):
         
         current_project["project_dir"] = project_dir
         current_project["index_dir"] = index_dir
+        
+        # 保存配置到文件
+        save_config()
         
         return {
             "success": True,

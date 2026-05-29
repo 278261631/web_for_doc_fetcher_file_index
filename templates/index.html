@@ -3,115 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DocFetcher Web - 代码索引搜索</title>
+    <title>DocFetcher - Code Search</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- 顶部导航栏 -->
-        <header class="header">
-            <div class="header-left">
-                <h1 class="logo">📄 DocFetcher Web</h1>
+    <div id="app">
+        <!-- 顶部菜单栏 -->
+        <div class="menu-bar">
+            <div class="menu-item" onclick="showIndexDialog()">File</div>
+            <div class="menu-item" onclick="document.getElementById('searchInput').focus()">Edit</div>
+            <div class="menu-item" onclick="toggleSidebar()">View</div>
+            <div class="menu-item">Navigate</div>
+            <div class="menu-item">Run</div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <button class="toolbar-btn" title="Build Index" onclick="showIndexDialog()">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm1 10H7V7h2v4zm0-6H7V3h2v2z"/></svg>
+                    Index Project
+                </button>
             </div>
-            <div class="header-center">
-                <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="搜索代码... (函数、变量、类型等)" 
-                           onkeypress="if(event.key==='Enter')search()">
-                    <button onclick="search()">🔍 搜索</button>
-                </div>
+            <div class="toolbar-group">
+                <button class="toolbar-btn" title="Find in Files (Ctrl+Shift+F)" onclick="document.getElementById('searchInput').focus()">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/></svg>
+                </button>
             </div>
-            <div class="header-right">
-                <button id="indexBtn" onclick="showIndexDialog()">📁 选择项目</button>
+            <div class="toolbar-spacer"></div>
+            <div class="toolbar-group">
                 <span id="statusIndicator" class="status-dot"></span>
+                <span id="statusText" class="status-text">Not indexed</span>
             </div>
-        </header>
+        </div>
 
         <!-- 主内容区 -->
         <div class="main-content">
-            <!-- 左侧文件树 -->
-            <aside class="sidebar" id="sidebar">
+            <!-- 左侧项目面板 -->
+            <div id="sidebar" class="sidebar">
                 <div class="sidebar-header">
-                    <h3>📂 项目结构</h3>
-                    <button onclick="loadTree()" title="刷新">🔄</button>
-                </div>
-                <div class="tree-container" id="treeContainer">
-                    <div class="empty-state">
-                        <p>请先选择项目目录</p>
+                    <span class="sidebar-title">Project</span>
+                    <div class="sidebar-actions">
+                        <button class="sidebar-btn" title="Collapse All" onclick="collapseAll()">⊟</button>
+                        <button class="sidebar-btn" title="Expand All" onclick="expandAll()">⊞</button>
                     </div>
                 </div>
-            </aside>
+                <div id="projectTree" class="project-tree">
+                    <div class="tree-empty">Build index to view project files</div>
+                </div>
+            </div>
 
-            <!-- 右侧内容区 -->
-            <main class="content-area" id="contentArea">
-                <div class="welcome-screen">
-                    <div class="welcome-card">
-                        <h2>欢迎使用 DocFetcher Web</h2>
-                        <p>代码索引与搜索工具</p>
-                        <div class="steps">
-                            <div class="step">
-                                <span class="step-num">1</span>
-                                <div>
-                                    <strong>选择项目</strong>
-                                    <p>点击右上角「选择项目」按钮</p>
-                                </div>
-                            </div>
-                            <div class="step">
-                                <span class="step-num">2</span>
-                                <div>
-                                    <strong>构建索引</strong>
-                                    <p>系统会自动扫描项目文件</p>
-                                </div>
-                            </div>
-                            <div class="step">
-                                <span class="step-num">3</span>
-                                <div>
-                                    <strong>搜索与浏览</strong>
-                                    <p>搜索代码或浏览文件结构</p>
-                                </div>
+            <!-- 中间搜索+结果面板 -->
+            <div class="center-panel">
+                <!-- 搜索面板 -->
+                <div class="search-panel">
+                    <div class="search-panel-header">
+                        <span class="search-panel-title">Find in Path</span>
+                        <button class="close-btn" onclick="clearSearch()">✕</button>
+                    </div>
+                    <div class="search-input-row">
+                        <input 
+                            type="text" 
+                            id="searchInput" 
+                            class="search-input" 
+                            placeholder="Text to find..."
+                            autocomplete="off"
+                        />
+                        <button id="searchBtn" class="search-execute-btn" onclick="executeSearch()">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/></svg>
+                        </button>
+                    </div>
+                    <div class="search-options">
+                        <label class="search-option">
+                            <input type="checkbox" id="caseSensitive" />
+                            <span>Match case</span>
+                        </label>
+                        <label class="search-option">
+                            <input type="checkbox" id="wholeWord" />
+                            <span>Whole words</span>
+                        </label>
+                        <label class="search-option">
+                            <input type="checkbox" id="useRegex" />
+                            <span>Regex</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 搜索结果面板 -->
+                <div class="results-panel">
+                    <div class="results-header">
+                        <span class="results-count" id="resultsCount">No results</span>
+                    </div>
+                    <div id="resultsList" class="results-list">
+                        <div class="results-empty">
+                            <svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/></svg>
+                            <p>Enter search text and press Enter</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 文件内容面板 -->
+                <div class="file-panel">
+                    <div class="file-tabs" id="fileTabs"></div>
+                    <div class="file-content-area">
+                        <div id="contentArea" class="content-area">
+                            <div class="content-empty">
+                                <p>Select a file to view its contents</p>
                             </div>
                         </div>
                     </div>
                 </div>
-            </main>
+            </div>
+        </div>
+
+        <!-- 底部状态栏 -->
+        <div class="status-bar">
+            <div class="status-bar-left">
+                <span id="statusBarProject">No project loaded</span>
+            </div>
+            <div class="status-bar-right">
+                <span id="statusBarResults"></span>
+                <span id="statusBarTime"></span>
+            </div>
         </div>
     </div>
 
-    <!-- 索引对话框 -->
-    <div class="modal" id="indexModal">
-        <div class="modal-content">
+    <!-- 索引构建对话框 -->
+    <div id="indexDialog" class="modal-overlay">
+        <div class="modal-dialog">
             <div class="modal-header">
-                <h2>📁 选择项目目录</h2>
-                <button class="close-btn" onclick="closeIndexDialog()">&times;</button>
+                <span class="modal-title">Index Project</span>
+                <button class="modal-close" onclick="closeIndexDialog()">✕</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="projectDir">项目目录路径：</label>
-                    <input type="text" id="projectDir" 
-                           placeholder="例如: C:\SoftwareSVN\FirmWareCode\QHY992_deep_cooling"
-                           value="C:\SoftwareSVN\FirmWareCode\QHY992_deep_cooling">
-                </div>
-                <div class="form-group">
-                    <button class="btn-primary" onclick="buildIndex()">🚀 构建索引</button>
-                </div>
-                <div id="indexProgress" class="progress-container" style="display:none;">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill"></div>
+                    <label for="projectDir">Project Directory</label>
+                    <div class="input-row">
+                        <input type="text" id="projectDir" placeholder="E:\projects\my-project" />
+                        <button class="browse-btn" onclick="browseDirectory()">Browse</button>
                     </div>
-                    <p id="progressText">正在构建索引...</p>
                 </div>
-                <div id="indexResult" class="result-container" style="display:none;"></div>
+                <div class="form-hint">
+                    Select the root directory of the project you want to index.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeIndexDialog()">Cancel</button>
+                <button id="indexBtn" class="btn btn-primary" onclick="buildIndex()">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm1 10H7V7h2v4zm0-6H7V3h2v2z"/></svg>
+                    Build Index
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- 文件查看器 -->
-    <div class="file-viewer" id="fileViewer" style="display:none;">
-        <div class="file-viewer-header">
-            <button class="back-btn" onclick="closeFileViewer()">← 返回</button>
-            <span class="file-path" id="filePath"></span>
-        </div>
-        <div class="file-content">
-            <pre id="fileContent"><code></code></pre>
+    <!-- 进度覆盖层 -->
+    <div id="progressOverlay" class="progress-overlay">
+        <div class="progress-content">
+            <div class="progress-spinner"></div>
+            <div class="progress-text" id="progressText">Indexing...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
         </div>
     </div>
 
