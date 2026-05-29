@@ -1,0 +1,3 @@
+[submodule "docfetcher-src"]
+	path = docfetcher-src
+	url = https://github.com/vivainio/docfetcher.git
