@@ -497,7 +497,7 @@ function escapeHtml(text) {
 
 function escapeAttr(text) {
     if (!text) return '';
-    return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return text.replace(/\\/g, '/').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 function escapeRegex(string) {
