@@ -123,6 +123,9 @@ class DocFetcherIndex:
             raise FileNotFoundError(f"Index directory not found: {index_dir}")
         self._index_dir = index_dir
         self._root_dir = project_dir
+        # 设置 _index 标记为 True，表示索引已加载（搜索使用文件扫描，不需要 Java 对象）
+        self._index = True
+        self._started = True
         logger.info(f"Index directory restored: {index_dir}")
         return {"num_docs": -1, "num_folders": -1, "errors": [], "note": "使用文件扫描搜索"}
 
