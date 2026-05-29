@@ -137,6 +137,10 @@ async def get_tree(path: Optional[str] = None):
 async def get_file(path: str):
     """获取文件内容"""
     try:
+        # 如果是相对路径，与当前项目目录拼接
+        if not os.path.isabs(path) and current_project["project_dir"]:
+            path = os.path.join(current_project["project_dir"], path)
+        
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
         
