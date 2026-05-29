@@ -385,15 +385,16 @@ def get_file_content(file_path, max_lines=500):
                 content = ''.join(lines)
                 return {
                     'content': content,
-                    'lines': len(lines),
+                    'lines': [l.rstrip('\n').rstrip('\r') for l in lines],
+                    'total_lines': len(lines),
                     'encoding': encoding,
-                    'truncated': len(f.readlines()) > 0 if False else False
+                    'truncated': False
                 }
             except UnicodeDecodeError:
                 continue
-        return {'content': '', 'error': '无法解码文件', 'lines': 0}
+        return {'content': '', 'error': '无法解码文件', 'lines': [], 'total_lines': 0}
     except Exception as e:
-        return {'content': '', 'error': str(e), 'lines': 0}
+        return {'content': '', 'error': str(e), 'lines': [], 'total_lines': 0}
 
 
 def shutdown_docfetcher():
