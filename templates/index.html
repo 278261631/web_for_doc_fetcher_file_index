@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocFetcher Web - 代码索引搜索</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部导航栏 -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="logo">📄 DocFetcher Web</h1>
+            </div>
+            <div class="header-center">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="搜索代码... (函数、变量、类型等)" 
+                           onkeypress="if(event.key==='Enter')search()">
+                    <button onclick="search()">🔍 搜索</button>
+                </div>
+            </div>
+            <div class="header-right">
+                <button id="indexBtn" onclick="showIndexDialog()">📁 选择项目</button>
+                <span id="statusIndicator" class="status-dot"></span>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 左侧文件树 -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>📂 项目结构</h3>
+                    <button onclick="loadTree()" title="刷新">🔄</button>
+                </div>
+                <div class="tree-container" id="treeContainer">
+                    <div class="empty-state">
+                        <p>请先选择项目目录</p>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 右侧内容区 -->
+            <main class="content-area" id="contentArea">
+                <div class="welcome-screen">
+                    <div class="welcome-card">
+                        <h2>欢迎使用 DocFetcher Web</h2>
+                        <p>代码索引与搜索工具</p>
+                        <div class="steps">
+                            <div class="step">
+                                <span class="step-num">1</span>
+                                <div>
+                                    <strong>选择项目</strong>
+                                    <p>点击右上角「选择项目」按钮</p>
+                                </div>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">2</span>
+                                <div>
+                                    <strong>构建索引</strong>
+                                    <p>系统会自动扫描项目文件</p>
+                                </div>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">3</span>
+                                <div>
+                                    <strong>搜索与浏览</strong>
+                                    <p>搜索代码或浏览文件结构</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 索引对话框 -->
+    <div class="modal" id="indexModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📁 选择项目目录</h2>
+                <button class="close-btn" onclick="closeIndexDialog()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="projectDir">项目目录路径：</label>
+                    <input type="text" id="projectDir" 
+                           placeholder="例如: C:\SoftwareSVN\FirmWareCode\QHY992_deep_cooling"
+                           value="C:\SoftwareSVN\FirmWareCode\QHY992_deep_cooling">
+                </div>
+                <div class="form-group">
+                    <button class="btn-primary" onclick="buildIndex()">🚀 构建索引</button>
+                </div>
+                <div id="indexProgress" class="progress-container" style="display:none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p id="progressText">正在构建索引...</p>
+                </div>
+                <div id="indexResult" class="result-container" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件查看器 -->
+    <div class="file-viewer" id="fileViewer" style="display:none;">
+        <div class="file-viewer-header">
+            <button class="back-btn" onclick="closeFileViewer()">← 返回</button>
+            <span class="file-path" id="filePath"></span>
+        </div>
+        <div class="file-content">
+            <pre id="fileContent"><code></code></pre>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
